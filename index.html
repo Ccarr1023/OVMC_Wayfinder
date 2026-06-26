@@ -1029,4 +1029,97 @@ html[data-contrast="high"] #printDirectionsBtnBottom{background:#000!important;c
 })();
 </script>
 
+
+<style id="v29-print-after-stop-red-stop">
+/* v29: Print button placement after Stop + red Stop button while audio is active. */
+html[data-app-mode="kiosk"] #routeScreen.active #stopAudioBtn + #printDirectionsBtnBottom{margin-left:8px;}
+#stopAudioBtn.audio-active-stop{
+  background:linear-gradient(135deg,#D92D20,#B42318)!important;
+  color:#fff!important;
+  border-color:rgba(180,35,24,.35)!important;
+  box-shadow:0 5px 0 rgba(180,35,24,.22),0 14px 26px rgba(180,35,24,.18)!important;
+}
+#stopAudioBtn.audio-active-stop:active{transform:translateY(3px) scale(.99);}
+html[data-contrast="high"] #stopAudioBtn.audio-active-stop{background:#000!important;color:#fff!important;border:3px solid #fff!important;box-shadow:none!important;outline:3px solid #D92D20!important;}
+</style>
+<script id="v29-print-after-stop-red-stop">
+/* v29: Safe UI-only patch. No external calls, no printer APIs. */
+(function(){
+  'use strict';
+  function byId(id){return document.getElementById(id);}
+  function isKiosk(){return document.documentElement.getAttribute('data-app-mode') === 'kiosk';}
+  function routeIsActive(){var r=byId('routeScreen');return !!(r && r.classList.contains('active'));}
+  function movePrintAfterStop(){
+    var printBtn = byId('printDirectionsBtnBottom');
+    var stopBtn = byId('stopAudioBtn');
+    if(!printBtn || !stopBtn || !isKiosk()) return;
+    if(stopBtn.nextElementSibling !== printBtn){
+      stopBtn.insertAdjacentElement('afterend', printBtn);
+    }
+  }
+  function audioGuidanceOn(){
+    var auto = byId('autoAudio');
+    return !!(auto && auto.checked);
+  }
+  function speechIsLive(){
+    try{
+      return !!(window.speechSynthesis && (speechSynthesis.speaking || speechSynthesis.pending));
+    }catch(e){return false;}
+  }
+  function updateStopButton(){
+    var stopBtn = byId('stopAudioBtn');
+    if(!stopBtn) return;
+    var active = routeIsActive() && (audioGuidanceOn() || speechIsLive());
+    stopBtn.classList.toggle('audio-active-stop', active);
+    stopBtn.setAttribute('aria-pressed', active ? 'true' : 'false');
+  }
+  function refresh(){
+    movePrintAfterStop();
+    updateStopButton();
+  }
+  function wrapAudioFunctions(){
+    if(window.__ovmcV29AudioWrapped) return;
+    window.__ovmcV29AudioWrapped = true;
+    var originalSpeakStep = window.speakStep;
+    if(typeof originalSpeakStep === 'function'){
+      window.speakStep = function(){
+        var result = originalSpeakStep.apply(this, arguments);
+        window.setTimeout(refresh, 0);
+        window.setTimeout(refresh, 250);
+        return result;
+      };
+    }
+    var originalSpeakText = window.speakText;
+    if(typeof originalSpeakText === 'function'){
+      window.speakText = function(){
+        var result = originalSpeakText.apply(this, arguments);
+        window.setTimeout(refresh, 0);
+        window.setTimeout(refresh, 250);
+        return result;
+      };
+    }
+    var originalStopSpeech = window.stopSpeech;
+    if(typeof originalStopSpeech === 'function'){
+      window.stopSpeech = function(){
+        var result = originalStopSpeech.apply(this, arguments);
+        window.setTimeout(refresh, 0);
+        window.setTimeout(refresh, 150);
+        return result;
+      };
+    }
+  }
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', function(){wrapAudioFunctions();refresh();});
+  }else{
+    wrapAudioFunctions();
+    refresh();
+  }
+  document.addEventListener('click', function(){window.setTimeout(refresh,0);}, true);
+  document.addEventListener('change', function(e){if(e.target && e.target.id === 'autoAudio') window.setTimeout(refresh,0);}, true);
+  window.setInterval(refresh, 500);
+  var observer = new MutationObserver(refresh);
+  observer.observe(document.documentElement,{attributes:true,subtree:true,attributeFilter:['class','data-app-mode']});
+})();
+</script>
+
 </body></html>
