@@ -795,4 +795,132 @@ html[data-contrast="high"] .kiosk-mode-chip{background:#000!important;color:#fff
 })();
 </script>
 
+
+
+<style id="v26-kiosk-thermal-print">
+/* v26: Kiosk-only thermal receipt printing. Native browser print, no printer APIs, no remote calls. */
+.print-receipt-root{display:none;}
+.print-directions-btn{display:none;align-items:center;justify-content:center;gap:8px;}
+html[data-app-mode="kiosk"] .print-directions-btn{display:inline-flex;}
+html[data-app-mode="kiosk"] .route-topbar{flex-wrap:wrap;}
+html[data-contrast="high"] .print-directions-btn{border:2px solid #fff!important;box-shadow:none!important;}
+@media print{
+  @page{size:80mm auto;margin:4mm;}
+  html,body{width:80mm!important;min-height:auto!important;background:#fff!important;color:#000!important;display:block!important;overflow:visible!important;}
+  body *{visibility:hidden!important;box-shadow:none!important;text-shadow:none!important;filter:none!important;}
+  #printReceiptRoot,#printReceiptRoot *{visibility:visible!important;}
+  #printReceiptRoot{display:block!important;position:absolute!important;left:0!important;top:0!important;width:72mm!important;background:#fff!important;color:#000!important;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace!important;font-size:11px!important;line-height:1.28!important;padding:0!important;margin:0!important;}
+  #printReceiptRoot .receipt-title{font-size:14px!important;font-weight:900!important;text-align:center!important;margin:0 0 4mm!important;letter-spacing:.02em!important;}
+  #printReceiptRoot .receipt-meta{border-top:1px dashed #000!important;border-bottom:1px dashed #000!important;padding:2mm 0!important;margin:0 0 3mm!important;}
+  #printReceiptRoot .receipt-meta div{margin:0 0 1mm!important;}
+  #printReceiptRoot .receipt-steps{list-style:none!important;margin:0!important;padding:0!important;}
+  #printReceiptRoot .receipt-step{break-inside:avoid!important;border-bottom:1px dashed #000!important;padding:2.5mm 0!important;margin:0!important;}
+  #printReceiptRoot .receipt-step strong{display:block!important;font-size:12px!important;margin-bottom:1mm!important;}
+  #printReceiptRoot .receipt-step span{display:block!important;}
+  #printReceiptRoot .receipt-footer{text-align:center!important;margin-top:4mm!important;font-size:10px!important;}
+  #printReceiptRoot .no-print{display:none!important;}
+}
+</style>
+<script id="v26-kiosk-thermal-print">
+/* v26: Kiosk thermal print helper. Uses window.print() only; receipt content is generated from in-memory route data. */
+(function(){
+  'use strict';
+  function $(id){return document.getElementById(id);}
+  function esc(value){return String(value == null ? '' : value).replace(/[&<>\"']/g,function(ch){return {'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[ch];});}
+  function isKioskMode(){return document.documentElement.getAttribute('data-app-mode') === 'kiosk';}
+  function currentLanguage(){try{return typeof lang === 'string' ? lang : 'en';}catch(e){return 'en';}}
+  function getDestinationName(){
+    try{
+      var routeId = typeof currentRoute !== 'undefined' ? currentRoute : '';
+      var d = Array.isArray(destinations) ? destinations.find(function(item){return item.id === routeId;}) : null;
+      var l = currentLanguage();
+      return d ? (l === 'es' ? (d.es || d.name) : (d.name || d.es)) : (l === 'es' ? 'Destino' : 'Destination');
+    }catch(e){return currentLanguage() === 'es' ? 'Destino' : 'Destination';}
+  }
+  function getStartName(){
+    try{return typeof getStartLocationLabel === 'function' ? getStartLocationLabel() : (currentLanguage()==='es'?'Kiosco':'Kiosk');}
+    catch(e){return currentLanguage()==='es'?'Kiosco':'Kiosk';}
+  }
+  function getSteps(){
+    try{return typeof currentSteps === 'function' ? (currentSteps() || []) : [];}
+    catch(e){return [];}
+  }
+  function ensureReceiptRoot(){
+    var root = $('printReceiptRoot');
+    if(!root){
+      root = document.createElement('section');
+      root.id = 'printReceiptRoot';
+      root.className = 'print-receipt-root';
+      root.setAttribute('aria-hidden','true');
+      document.body.appendChild(root);
+    }
+    return root;
+  }
+  function buildReceipt(){
+    var l = currentLanguage();
+    var steps = getSteps();
+    var from = getStartName();
+    var to = getDestinationName();
+    var title = l === 'es' ? 'OVMC INDICACIONES' : 'OVMC DIRECTIONS';
+    var fromLabel = l === 'es' ? 'Desde' : 'From';
+    var toLabel = l === 'es' ? 'A' : 'To';
+    var help = l === 'es' ? 'Necesita ayuda? Pregunte a cualquier empleado.' : 'Need help? Ask any staff member.';
+    var stepWord = l === 'es' ? 'Paso' : 'Step';
+    var html = '<div class="receipt-title">'+esc(title)+'</div>';
+    html += '<div class="receipt-meta"><div><strong>'+esc(fromLabel)+':</strong> '+esc(from)+'</div><div><strong>'+esc(toLabel)+':</strong> '+esc(to)+'</div></div>';
+    html += '<ol class="receipt-steps">';
+    steps.forEach(function(step,index){
+      var stepTitle = l === 'es' ? (step.titleEs || step.title || '') : (step.title || step.titleEs || '');
+      var stepText = l === 'es' ? (step.textEs || step.text || '') : (step.text || step.textEs || '');
+      html += '<li class="receipt-step"><strong>'+esc(stepWord)+' '+(index+1)+': '+stepTitle+'</strong><span>'+esc(stepText)+'</span></li>';
+    });
+    html += '</ol><div class="receipt-footer">'+esc(help)+'</div>';
+    return html;
+  }
+  function updateReceipt(){ensureReceiptRoot().innerHTML = buildReceipt();}
+  function installButton(){
+    if(!isKioskMode()) return;
+    if($('printDirectionsBtn')) return;
+    var topbar = document.querySelector('.route-topbar');
+    if(!topbar) return;
+    var btn = document.createElement('button');
+    btn.id = 'printDirectionsBtn';
+    btn.type = 'button';
+    btn.className = 'soft-btn print-directions-btn';
+    btn.textContent = currentLanguage() === 'es' ? 'Imprimir pasos' : 'Print Steps';
+    btn.setAttribute('aria-label', currentLanguage() === 'es' ? 'Imprimir las indicaciones paso a paso' : 'Print step by step directions');
+    btn.addEventListener('click', function(){
+      updateReceipt();
+      window.setTimeout(function(){window.print();}, 60);
+    });
+    topbar.appendChild(btn);
+  }
+  function refreshPrintUi(){
+    if(!isKioskMode()) return;
+    installButton();
+    updateReceipt();
+    var btn = $('printDirectionsBtn');
+    if(btn){
+      btn.textContent = currentLanguage() === 'es' ? 'Imprimir pasos' : 'Print Steps';
+      btn.setAttribute('aria-label', currentLanguage() === 'es' ? 'Imprimir las indicaciones paso a paso' : 'Print step by step directions');
+    }
+  }
+  window.printKioskDirections = function(){refreshPrintUi(); window.print();};
+  if(typeof window.renderStep === 'function'){
+    var originalRenderStep = window.renderStep;
+    window.renderStep = function(){
+      var result = originalRenderStep.apply(this, arguments);
+      refreshPrintUi();
+      return result;
+    };
+  }
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', refreshPrintUi);
+  }else{
+    refreshPrintUi();
+  }
+  document.addEventListener('click', function(){window.setTimeout(refreshPrintUi, 0);}, true);
+})();
+</script>
+
 </body></html>
